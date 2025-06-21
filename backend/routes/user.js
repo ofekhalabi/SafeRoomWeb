@@ -29,33 +29,41 @@ router.get('/status', (req, res) => {
 
 // Unified endpoint to update a user's status
 router.post('/update-status', (req, res) => {
-  const { status_mamad, status_after } = req.body;
-
   db.get('SELECT status_mamad, status_after FROM statuses WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1', [req.user.id], (err, currentStatus) => {
-    if (err) return res.status(500).json({ error: 'DB error while fetching current status.' });
+    if (err) {
+      return res.status(500).json({ error: 'Database error when fetching status.' });
+    }
 
-    const newStatusValues = {
-      mamad: currentStatus?.status_mamad,
-      after: currentStatus?.status_after
-    };
+    // Establish the previous state, defaulting to null if no history exists.
+    const previousMamad = currentStatus ? currentStatus.status_mamad : null;
+    const previousAfter = currentStatus ? currentStatus.status_after : null;
 
-    if (status_mamad !== undefined) newStatusValues.mamad = status_mamad ? 1 : 0;
-    if (status_after !== undefined) newStatusValues.after = status_after ? 1 : 0;
+    // Determine the next state for 'mamad', using the update if provided, otherwise preserving the old state.
+    let nextMamad = previousMamad;
+    if (req.body.hasOwnProperty('status_mamad')) {
+      nextMamad = req.body.status_mamad ? 1 : 0;
+    }
+    
+    // Determine the next state for 'after', using the update if provided, otherwise preserving the old state.
+    let nextAfter = previousAfter;
+    if (req.body.hasOwnProperty('status_after')) {
+      nextAfter = req.body.status_after ? 1 : 0;
+    }
 
+    // Insert the new, complete status record into the history.
     db.run('INSERT INTO statuses (user_id, status_mamad, status_after) VALUES (?, ?, ?)',
-      [req.user.id, newStatusValues.mamad, newStatusValues.after],
+      [req.user.id, nextMamad, nextAfter],
       function(err) {
-        if (err) return res.status(500).json({ error: 'DB error while inserting new status.' });
-
-        // After inserting, fetch the complete new row to return it.
-        const newStatusId = this.lastID;
-        db.get('SELECT * FROM statuses WHERE id = ?', [newStatusId], (err, newStatus) => {
-          if (err) return res.status(500).json({ error: 'DB error while fetching new status.' });
-          
-          if (newStatus && newStatus.timestamp) {
-            newStatus.timestamp = formatIsraelTime(newStatus.timestamp);
+        if (err) {
+          return res.status(500).json({ error: 'Database error when inserting new status.' });
+        }
+        // Retrieve and return the newly created record to sync the frontend.
+        db.get('SELECT * FROM statuses WHERE id = ?', [this.lastID], (err, newRecord) => {
+          if (err) {
+            return res.status(500).json({ error: 'Database error when fetching new record.' });
           }
-          res.json({ success: true, newStatus });
+          newRecord.timestamp = formatIsraelTime(newRecord.timestamp);
+          res.json(newRecord);
         });
       }
     );
