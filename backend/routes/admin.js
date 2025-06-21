@@ -11,42 +11,19 @@ router.use(authenticateToken, (req, res, next) => {
   next();
 });
 
-// Endpoint to delete a user and all their related data
-router.delete('/users/:id', (req, res) => {
-  const userIdToDelete = req.params.id;
-
-  db.serialize(() => {
-    // First, delete all status history for the user to maintain data integrity.
-    db.run('DELETE FROM statuses WHERE user_id = ?', [userIdToDelete], function(err) {
-      if (err) {
-        return res.status(500).json({ error: 'Database error while deleting user statuses.' });
-      }
-
-      // Then, delete the user themselves.
-      db.run('DELETE FROM users WHERE id = ?', [userIdToDelete], function(err) {
-        if (err) {
-          return res.status(500).json({ error: 'Database error while deleting user.' });
-        }
-
-        if (this.changes === 0) {
-          return res.status(404).json({ error: 'User not found.' });
-        }
-
-        res.json({ success: true, message: 'User and their status history have been deleted.' });
-      });
-    });
-  });
-});
-
 // Endpoint to delete a user by USERNAME and all their related data
-router.delete('/users/:username', (req, res) => {
-  const usernameToDelete = req.params.username;
+router.delete('/users/by-username/:username', (req, res) => {
+  const usernameToDelete = req.params.username.trim();
+  const sql = 'SELECT id FROM users WHERE LOWER(TRIM(username)) = LOWER(?)';
+  console.log('Executing SQL:', sql, 'with value:', usernameToDelete);
 
   // First, find the user to get their ID
-  db.get('SELECT id FROM users WHERE username = ?', [usernameToDelete], (err, user) => {
+  db.get(sql, [usernameToDelete], (err, user) => {
     if (err) {
+      console.error('Database error:', err.message);
       return res.status(500).json({ error: 'Database error while finding user.' });
     }
+    console.log('User found in DB:', user);
     if (!user) {
       return res.status(404).json({ error: `User with username '${usernameToDelete}' not found.` });
     }
@@ -64,6 +41,11 @@ router.delete('/users/:username', (req, res) => {
         db.run('DELETE FROM users WHERE id = ?', [userIdToDelete], function(err) {
           if (err) {
             return res.status(500).json({ error: 'Database error while deleting user.' });
+          }
+          if (this.changes === 0) {
+            // This case should ideally not be reached if the user was found before,
+            // but as a safeguard:
+            return res.status(404).json({ error: 'User not found during deletion phase.' });
           }
           res.json({ success: true, message: `User '${usernameToDelete}' and their status history have been deleted.` });
         });
