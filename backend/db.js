@@ -24,8 +24,8 @@ db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS statuses (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
-    status_mamad INTEGER DEFAULT 0,
-    status_after INTEGER DEFAULT 0,
+    status_mamad INTEGER DEFAULT NULL,
+    status_after INTEGER DEFAULT NULL,
     timestamp DATETIME DEFAULT (datetime('now', '+03:00')),
     FOREIGN KEY(user_id) REFERENCES users(id)
   )`);

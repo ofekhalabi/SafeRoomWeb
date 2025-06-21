@@ -16,28 +16,49 @@ router.get('/me', (req, res) => {
 router.get('/status', (req, res) => {
   db.get('SELECT * FROM statuses WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1', [req.user.id], (err, status) => {
     if (err) return res.status(500).json({ error: 'DB error' });
-    if (status && status.timestamp) {
-      status.timestamp = formatIsraelTime(status.timestamp);
+
+    const result = status || { status_mamad: null, status_after: null };
+
+    if (result.timestamp) {
+      result.timestamp = formatIsraelTime(result.timestamp);
     }
-    res.json(status || {});
+    
+    res.json(result);
   });
 });
 
-// Update status_mamad
-router.post('/status/mamad', (req, res) => {
-  const { status_mamad } = req.body;
-  db.run('INSERT INTO statuses (user_id, status_mamad) VALUES (?, ?)', [req.user.id, status_mamad ? 1 : 0], function(err) {
-    if (err) return res.status(500).json({ error: 'DB error' });
-    res.json({ success: true });
-  });
-});
+// Unified endpoint to update a user's status
+router.post('/update-status', (req, res) => {
+  const { status_mamad, status_after } = req.body;
 
-// Update status_after
-router.post('/status/after', (req, res) => {
-  const { status_after } = req.body;
-  db.run('INSERT INTO statuses (user_id, status_after) VALUES (?, ?)', [req.user.id, status_after ? 1 : 0], function(err) {
-    if (err) return res.status(500).json({ error: 'DB error' });
-    res.json({ success: true });
+  db.get('SELECT status_mamad, status_after FROM statuses WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1', [req.user.id], (err, currentStatus) => {
+    if (err) return res.status(500).json({ error: 'DB error while fetching current status.' });
+
+    const newStatusValues = {
+      mamad: currentStatus?.status_mamad,
+      after: currentStatus?.status_after
+    };
+
+    if (status_mamad !== undefined) newStatusValues.mamad = status_mamad ? 1 : 0;
+    if (status_after !== undefined) newStatusValues.after = status_after ? 1 : 0;
+
+    db.run('INSERT INTO statuses (user_id, status_mamad, status_after) VALUES (?, ?, ?)',
+      [req.user.id, newStatusValues.mamad, newStatusValues.after],
+      function(err) {
+        if (err) return res.status(500).json({ error: 'DB error while inserting new status.' });
+
+        // After inserting, fetch the complete new row to return it.
+        const newStatusId = this.lastID;
+        db.get('SELECT * FROM statuses WHERE id = ?', [newStatusId], (err, newStatus) => {
+          if (err) return res.status(500).json({ error: 'DB error while fetching new status.' });
+          
+          if (newStatus && newStatus.timestamp) {
+            newStatus.timestamp = formatIsraelTime(newStatus.timestamp);
+          }
+          res.json({ success: true, newStatus });
+        });
+      }
+    );
   });
 });
 
@@ -45,7 +66,6 @@ router.post('/status/after', (req, res) => {
 router.get('/status/history', (req, res) => {
   db.all('SELECT * FROM statuses WHERE user_id = ? ORDER BY timestamp DESC', [req.user.id], (err, rows) => {
     if (err) return res.status(500).json({ error: 'DB error' });
-    // Format timestamps for Israel timezone
     const formattedRows = rows.map(row => ({
       ...row,
       timestamp: formatIsraelTime(row.timestamp)
