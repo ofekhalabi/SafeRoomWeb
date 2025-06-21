@@ -1,6 +1,9 @@
 const sqlite3 = require('sqlite3').verbose();
 const db = new sqlite3.Database('./shelter_status.db');
 
+// Set timezone to Israel for the database connection
+db.run("PRAGMA timezone = '+03:00'");
+
 // Create users table
 // Fields: id, name, username, password_hash, location, role, team_lead_id
 // role: 'user', 'team_lead', or 'admin'
@@ -23,7 +26,7 @@ db.serialize(() => {
     user_id INTEGER NOT NULL,
     status_mamad INTEGER DEFAULT 0,
     status_after INTEGER DEFAULT 0,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    timestamp DATETIME DEFAULT (datetime('now', '+03:00')),
     FOREIGN KEY(user_id) REFERENCES users(id)
   )`);
 });

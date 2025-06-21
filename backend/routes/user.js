@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const authenticateToken = require('../middleware/auth');
+const { formatIsraelTime } = require('../utils/timezone');
 
 router.use(authenticateToken);
 
@@ -15,6 +16,9 @@ router.get('/me', (req, res) => {
 router.get('/status', (req, res) => {
   db.get('SELECT * FROM statuses WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1', [req.user.id], (err, status) => {
     if (err) return res.status(500).json({ error: 'DB error' });
+    if (status && status.timestamp) {
+      status.timestamp = formatIsraelTime(status.timestamp);
+    }
     res.json(status || {});
   });
 });
@@ -41,7 +45,12 @@ router.post('/status/after', (req, res) => {
 router.get('/status/history', (req, res) => {
   db.all('SELECT * FROM statuses WHERE user_id = ? ORDER BY timestamp DESC', [req.user.id], (err, rows) => {
     if (err) return res.status(500).json({ error: 'DB error' });
-    res.json(rows);
+    // Format timestamps for Israel timezone
+    const formattedRows = rows.map(row => ({
+      ...row,
+      timestamp: formatIsraelTime(row.timestamp)
+    }));
+    res.json(formattedRows);
   });
 });
 

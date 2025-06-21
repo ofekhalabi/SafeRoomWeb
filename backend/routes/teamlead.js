@@ -6,6 +6,7 @@ const ExcelJS = require('exceljs');
 const { jsPDF } = require('jspdf');
 require('jspdf-autotable');
 const fs = require('fs');
+const { formatIsraelTime } = require('../utils/timezone');
 
 router.use(authenticateToken);
 
@@ -24,7 +25,12 @@ router.get('/users', (req, res) => {
     FROM users u WHERE u.team_lead_id = ?`;
   db.all(sql, [req.user.id], (err, rows) => {
     if (err) return res.status(500).json({ error: 'DB error' });
-    res.json(rows);
+    // Format timestamps for Israel timezone
+    const formattedRows = rows.map(row => ({
+      ...row,
+      last_updated: formatIsraelTime(row.last_updated)
+    }));
+    res.json(formattedRows);
   });
 });
 
@@ -48,15 +54,22 @@ router.get('/stats', (req, res) => {
 router.get('/export/pdf', async (req, res) => {
   const sql = `SELECT u.name, u.location,
     (SELECT status_mamad FROM statuses s WHERE s.user_id = u.id ORDER BY timestamp DESC LIMIT 1) as status_mamad,
-    (SELECT status_after FROM statuses s WHERE s.user_id = u.id ORDER BY timestamp DESC LIMIT 1) as status_after
+    (SELECT status_after FROM statuses s WHERE s.user_id = u.id ORDER BY timestamp DESC LIMIT 1) as status_after,
+    (SELECT timestamp FROM statuses s WHERE s.user_id = u.id ORDER BY timestamp DESC LIMIT 1) as last_updated
     FROM users u WHERE u.team_lead_id = ?`;
   db.all(sql, [req.user.id], async (err, rows) => {
     if (err) return res.status(500).json({ error: 'DB error' });
     const doc = new jsPDF();
-    doc.text('User Status Report', 10, 10);
+    doc.text('User Status Report (Israel Time)', 10, 10);
     doc.autoTable({
-      head: [['Name', 'Location', 'In Shelter', 'Safe After Alarm']],
-      body: rows.map(r => [r.name, r.location, r.status_mamad ? 'Yes' : 'No', r.status_after ? 'Yes' : 'No'])
+      head: [['Name', 'Location', 'In Shelter', 'Safe After Alarm', 'Last Updated']],
+      body: rows.map(r => [
+        r.name, 
+        r.location, 
+        r.status_mamad ? 'Yes' : 'No', 
+        r.status_after ? 'Yes' : 'No',
+        formatIsraelTime(r.last_updated) || 'N/A'
+      ])
     });
     const pdf = doc.output('arraybuffer');
     res.setHeader('Content-Type', 'application/pdf');
@@ -69,7 +82,8 @@ router.get('/export/pdf', async (req, res) => {
 router.get('/export/excel', async (req, res) => {
   const sql = `SELECT u.name, u.location,
     (SELECT status_mamad FROM statuses s WHERE s.user_id = u.id ORDER BY timestamp DESC LIMIT 1) as status_mamad,
-    (SELECT status_after FROM statuses s WHERE s.user_id = u.id ORDER BY timestamp DESC LIMIT 1) as status_after
+    (SELECT status_after FROM statuses s WHERE s.user_id = u.id ORDER BY timestamp DESC LIMIT 1) as status_after,
+    (SELECT timestamp FROM statuses s WHERE s.user_id = u.id ORDER BY timestamp DESC LIMIT 1) as last_updated
     FROM users u WHERE u.team_lead_id = ?`;
   db.all(sql, [req.user.id], async (err, rows) => {
     if (err) return res.status(500).json({ error: 'DB error' });
@@ -79,14 +93,16 @@ router.get('/export/excel', async (req, res) => {
       { header: 'Name', key: 'name', width: 20 },
       { header: 'Location', key: 'location', width: 20 },
       { header: 'In Shelter', key: 'status_mamad', width: 15 },
-      { header: 'Safe After Alarm', key: 'status_after', width: 18 }
+      { header: 'Safe After Alarm', key: 'status_after', width: 18 },
+      { header: 'Last Updated (Israel Time)', key: 'last_updated', width: 25 }
     ];
     rows.forEach(r => {
       worksheet.addRow({
         name: r.name,
         location: r.location,
         status_mamad: r.status_mamad ? 'Yes' : 'No',
-        status_after: r.status_after ? 'Yes' : 'No'
+        status_after: r.status_after ? 'Yes' : 'No',
+        last_updated: formatIsraelTime(r.last_updated) || 'N/A'
       });
     });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
