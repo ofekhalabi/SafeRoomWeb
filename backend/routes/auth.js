@@ -8,11 +8,31 @@ const JWT_SECRET = 'your_jwt_secret'; // Change in production
 
 router.post('/login', (req, res) => {
   const { username, password } = req.body;
+  console.log(`Login attempt for username: ${username}`);
+  console.log(`Password received: ${password}`);
+
   db.get('SELECT * FROM users WHERE username = ?', [username], (err, user) => {
-    if (err) return res.status(500).json({ error: 'DB error' });
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+    if (err) {
+      console.error('Database error during login:', err);
+      return res.status(500).json({ error: 'DB error' });
+    }
+    
+    console.log('User found in database:', user);
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
     bcrypt.compare(password, user.password_hash, (err, isMatch) => {
-      if (err || !isMatch) return res.status(401).json({ error: 'Invalid credentials' });
+      if (err) {
+        console.error('Bcrypt comparison error:', err);
+      }
+      console.log(`Password match result (isMatch): ${isMatch}`);
+
+      if (err || !isMatch) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
       const token = jwt.sign({
         id: user.id,
         name: user.name,

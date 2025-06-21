@@ -1,5 +1,8 @@
 const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('./shelter_status.db');
+const path = require('path');
+
+const dbPath = path.join(__dirname, 'shelter_status.db');
+const db = new sqlite3.Database(dbPath);
 
 // Set timezone to Israel for the database connection
 db.run("PRAGMA timezone = '+03:00'");
