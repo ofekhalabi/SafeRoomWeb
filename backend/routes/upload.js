@@ -44,19 +44,22 @@ router.post('/users', upload.single('file'), (req, res) => {
       }
 
       const row = data[index];
-      const { name, username, password, location } = row;
+      const { name, username, password, location, role } = row;
       if (!name || !username || !password || !location) {
-        errors.push(`Row ${index + 2}: Missing required fields.`);
+        errors.push(`Row ${index + 2}: Missing required fields (name, username, password, location).`);
         errorCount++;
         processRowSequentially(index + 1); // Move to next row
         return;
       }
 
+      // Default to 'user' role if not specified or invalid
+      const userRole = (role && ['user', 'team_lead', 'admin'].includes(role.toLowerCase())) ? role.toLowerCase() : 'user';
+
       const password_hash = bcrypt.hashSync(password.toString(), 10);
       const team_lead_id = req.user.role === 'team_lead' ? req.user.id : null;
 
       db.run('INSERT INTO users (name, username, password_hash, location, role, team_lead_id) VALUES (?, ?, ?, ?, ?, ?)',
-        [name, username, password_hash, location, 'user', team_lead_id],
+        [name, username, password_hash, location, userRole, team_lead_id],
         function(err) {
           if (err) {
             errors.push(`Row ${index + 2} (Username: ${username}): ${err.message}`);
