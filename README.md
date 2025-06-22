@@ -40,10 +40,20 @@ To deploy the application on a new computer, follow these steps:
 
 3.  **Run the application.**
 
-    Open a terminal in that directory and run the following command:
+    Open a terminal in that directory and run the following command to start the application containers:
     ```bash
-    docker-compose up
+    docker-compose up -d
     ```
-    Docker will automatically download (pull) your application images from the registry and start the containers.
+    Docker will automatically download (pull) your application images from the registry and start them in the background.
 
-Once the process is complete, the application will be accessible at `http://localhost:8080`. 
+4.  **Seed the database with an admin user.**
+
+    With the application running, open a new terminal in the same directory and run the following command to create the initial admin user:
+    ```bash
+    docker-compose exec backend node seed_admin.js
+    ```
+    This will populate the database with a default admin account. The credentials are:
+    - **Username:** `admin`
+    - **Password:** `admin123`
+
+Once the process is complete, the application will be accessible at `http://localhost:8080`, and you can log in with the default admin credentials. 
