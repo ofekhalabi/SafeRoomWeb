@@ -19,6 +19,7 @@ db.serialize(() => {
     location TEXT NOT NULL,
     role TEXT NOT NULL CHECK(role IN ('user', 'team_lead', 'admin')),
     team_lead_id INTEGER,
+    force_password_change BOOLEAN DEFAULT TRUE,
     FOREIGN KEY(team_lead_id) REFERENCES users(id)
   )`);
 

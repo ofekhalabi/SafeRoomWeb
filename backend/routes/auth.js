@@ -33,13 +33,17 @@ router.post('/login', (req, res) => {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
-      const token = jwt.sign({
+      const payload = {
         id: user.id,
         name: user.name,
+        username: user.username,
         role: user.role,
         location: user.location,
-        team_lead_id: user.team_lead_id
-      }, JWT_SECRET, { expiresIn: '8h' });
+        team_lead_id: user.team_lead_id,
+        forcePasswordChange: user.force_password_change === 1 // Ensure boolean
+      };
+
+      const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '8h' });
       res.json({ token });
     });
   });

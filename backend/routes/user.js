@@ -2,8 +2,13 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const authenticateToken = require('../middleware/auth');
-const { formatIsraelTime } = require('../utils/timezone');
+const { formatIsraelTime, toUTC } = require('../utils/timezone');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
+const JWT_SECRET = process.env.JWT_SECRET || 'your_secret_key';
+
+// All routes here require authentication
 router.use(authenticateToken);
 
 // Get user info
@@ -80,6 +85,53 @@ router.get('/status/history', (req, res) => {
     }));
     res.json(formattedRows);
   });
+});
+
+// Endpoint for a user to change their own password
+router.post('/change-password', (req, res) => {
+    const { newPassword } = req.body;
+    const userId = req.user.id;
+  
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
+    }
+  
+    const hashedPassword = bcrypt.hashSync(newPassword, 10);
+  
+    db.run(
+      'UPDATE users SET password_hash = ?, force_password_change = ? WHERE id = ?',
+      [hashedPassword, false, userId],
+      function (err) {
+        if (err) {
+          return res.status(500).json({ error: 'Database error while changing password.' });
+        }
+        
+        // After success, fetch user details to generate a new token with updated claims
+        db.get('SELECT id, name, username, role, location, force_password_change FROM users WHERE id = ?', [userId], (err, user) => {
+            if (err || !user) {
+                // This would be an internal error, as the user should exist.
+                return res.status(500).json({ error: 'Could not retrieve user details after password change.' });
+            }
+
+            const payload = {
+                id: user.id,
+                name: user.name,
+                username: user.username,
+                role: user.role,
+                location: user.location,
+                forcePasswordChange: user.force_password_change === 1 // Will be false
+            };
+
+            const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' });
+
+            res.json({ 
+                success: true, 
+                message: 'Password changed successfully.',
+                token // Send the new token back
+            });
+        });
+      }
+    );
 });
 
 module.exports = router; 

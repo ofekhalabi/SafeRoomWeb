@@ -4,7 +4,7 @@ const db = require('../db');
 const authenticateToken = require('../middleware/auth');
 const ExcelJS = require('exceljs');
 const { jsPDF } = require('jspdf');
-require('jspdf-autotable');
+const autoTable = require('jspdf-autotable');
 const fs = require('fs');
 const { formatIsraelTime } = require('../utils/timezone');
 
@@ -118,7 +118,7 @@ router.get('/export/pdf', async (req, res) => {
     if (err) return res.status(500).json({ error: 'DB error' });
     const doc = new jsPDF();
     doc.text('User Status Report (Israel Time)', 10, 10);
-    doc.autoTable({
+    autoTable(doc, {
       head: [['Name', 'Location', 'In Shelter', 'Safe After Alarm', 'Last Updated']],
       body: rows.map(r => [
         r.name, 

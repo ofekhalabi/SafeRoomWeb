@@ -1,0 +1,16 @@
+services:
+  backend:
+    image: ofekhalabi/saferoombackend:1.0.0
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./shelter_status.db:/app/shelter_status.db
+
+  frontend:
+    image: ofekhalabi/saferoomfrontend:1.0.0
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+version: '3.8' 

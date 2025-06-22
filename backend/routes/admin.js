@@ -54,4 +54,40 @@ router.delete('/users/by-username/:username', (req, res) => {
   });
 });
 
+// Delete all non-admin users and their associated statuses
+router.delete('/users', (req, res) => {
+  db.serialize(() => {
+    db.run('BEGIN TRANSACTION;', (err) => {
+      if (err) {
+        return res.status(500).json({ error: 'Failed to start transaction.', details: err.message });
+      }
+    });
+
+    // First, delete statuses. No need to specify users since we are deleting all non-admin users.
+    db.run('DELETE FROM statuses', function(err) {
+      if (err) {
+        db.run('ROLLBACK;');
+        return res.status(500).json({ error: 'Database error while deleting statuses.', details: err.message });
+      }
+
+      // Then, delete the non-admin users.
+      db.run('DELETE FROM users WHERE role != "admin"', function(err) {
+        if (err) {
+          db.run('ROLLBACK;');
+          return res.status(500).json({ error: 'Database error while deleting users.', details: err.message });
+        }
+
+        const deletedUsersCount = this.changes;
+        db.run('COMMIT;', (err) => {
+          if (err) {
+            // If commit fails, we can't really rollback, but we should report the error.
+            return res.status(500).json({ error: 'Failed to commit transaction.', details: err.message });
+          }
+          res.json({ success: true, message: `${deletedUsersCount} users and all statuses deleted successfully.` });
+        });
+      });
+    });
+  });
+});
+
 module.exports = router; 

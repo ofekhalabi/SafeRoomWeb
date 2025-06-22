@@ -5,15 +5,62 @@ const xlsx = require('xlsx');
 const bcrypt = require('bcryptjs');
 const db = require('../db');
 const authenticateToken = require('../middleware/auth');
+const csv = require('csv-parser');
+const { Readable } = require('stream');
+const iconv = require('iconv-lite');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
 // All routes in this file require authentication.
 router.use(authenticateToken);
 
-// Endpoint for creating users in bulk from an Excel file.
+const processAndInsertData = (data, req, res) => {
+  let successCount = 0;
+  let errorCount = 0;
+  const errors = [];
+
+  const processRowSequentially = (index) => {
+    if (index >= data.length) {
+      return res.json({
+        message: 'Bulk user upload processed.',
+        successCount,
+        errorCount,
+        errors
+      });
+    }
+
+    const row = data[index];
+    const { name, username, password, location, role } = row;
+    if (!name || !username || !password || !location) {
+      errors.push(`Row ${index + 2}: Missing required fields (name, username, password, location).`);
+      errorCount++;
+      processRowSequentially(index + 1);
+      return;
+    }
+
+    const userRole = (role && ['user', 'team_lead', 'admin'].includes(role.toLowerCase())) ? role.toLowerCase() : 'user';
+    const password_hash = bcrypt.hashSync(password.toString(), 10);
+    const team_lead_id = req.user.role === 'team_lead' ? req.user.id : null;
+
+    db.run('INSERT INTO users (name, username, password_hash, location, role, team_lead_id) VALUES (?, ?, ?, ?, ?, ?)',
+      [name, username, password_hash, location, userRole, team_lead_id],
+      function(err) {
+        if (err) {
+          errors.push(`Row ${index + 2} (Username: ${username}): ${err.message}`);
+          errorCount++;
+        } else {
+          successCount++;
+        }
+        processRowSequentially(index + 1);
+      }
+    );
+  };
+
+  processRowSequentially(0);
+};
+
+// Endpoint for creating users in bulk from an Excel or CSV file.
 router.post('/users', upload.single('file'), (req, res) => {
-  // Security check: Only admins and team leads can upload users.
   if (req.user.role !== 'admin' && req.user.role !== 'team_lead') {
     return res.status(403).json({ error: 'Forbidden' });
   }
@@ -23,60 +70,25 @@ router.post('/users', upload.single('file'), (req, res) => {
   }
 
   try {
-    const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
-    const sheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheetName];
-    const data = xlsx.utils.sheet_to_json(worksheet);
-
-    let successCount = 0;
-    let errorCount = 0;
-    const errors = [];
-
-    const processRowSequentially = (index) => {
-      if (index >= data.length) {
-        // Finished processing all rows
-        return res.json({
-          message: 'Bulk user upload processed.',
-          successCount,
-          errorCount,
-          errors
+    if (req.file.mimetype === 'text/csv' || req.file.originalname.endsWith('.csv')) {
+      const results = [];
+      const stream = Readable.from(req.file.buffer);
+      stream
+        .pipe(iconv.decodeStream('win1255'))
+        .pipe(csv({ bom: true }))
+        .on('data', (data) => results.push(data))
+        .on('end', () => {
+          processAndInsertData(results, req, res);
         });
-      }
-
-      const row = data[index];
-      const { name, username, password, location, role } = row;
-      if (!name || !username || !password || !location) {
-        errors.push(`Row ${index + 2}: Missing required fields (name, username, password, location).`);
-        errorCount++;
-        processRowSequentially(index + 1); // Move to next row
-        return;
-      }
-
-      // Default to 'user' role if not specified or invalid
-      const userRole = (role && ['user', 'team_lead', 'admin'].includes(role.toLowerCase())) ? role.toLowerCase() : 'user';
-
-      const password_hash = bcrypt.hashSync(password.toString(), 10);
-      const team_lead_id = req.user.role === 'team_lead' ? req.user.id : null;
-
-      db.run('INSERT INTO users (name, username, password_hash, location, role, team_lead_id) VALUES (?, ?, ?, ?, ?, ?)',
-        [name, username, password_hash, location, userRole, team_lead_id],
-        function(err) {
-          if (err) {
-            errors.push(`Row ${index + 2} (Username: ${username}): ${err.message}`);
-            errorCount++;
-          } else {
-            successCount++;
-          }
-          processRowSequentially(index + 1); // Process the next row
-        }
-      );
-    };
-
-    // Start processing from the first row
-    processRowSequentially(0);
-
+    } else {
+      const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const data = xlsx.utils.sheet_to_json(worksheet);
+      processAndInsertData(data, req, res);
+    }
   } catch (e) {
-    res.status(500).json({ error: 'Failed to process Excel file.', details: e.message });
+    res.status(500).json({ error: 'Failed to process file.', details: e.message });
   }
 });
 
@@ -91,7 +103,13 @@ router.post('/assign-users', authenticateToken, upload.single('file'), (req, res
     }
   
     try {
-      const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+      let workbook;
+      if (req.file.mimetype === 'text/csv' || req.file.originalname.endsWith('.csv')) {
+        const csvString = req.file.buffer.toString('utf8');
+        workbook = xlsx.read(csvString, { type: 'string' });
+      } else {
+        workbook = xlsx.read(req.file.buffer, { type: 'buffer', codepage: 65001 });
+      }
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
       const data = xlsx.utils.sheet_to_json(worksheet);

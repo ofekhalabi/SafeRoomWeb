@@ -8,8 +8,8 @@ const location = 'HQ';
 const role = 'admin';
 
 const hash = bcrypt.hashSync(password, 10);
-db.run('INSERT INTO users (name, username, password_hash, location, role) VALUES (?, ?, ?, ?, ?)',
-  [name, username, hash, location, role],
+db.run('INSERT OR REPLACE INTO users (id, name, username, password_hash, location, role, force_password_change) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  [1, name, username, hash, location, role, false],
   function(err) {
     if (err) {
       console.error('Error:', err.message);
